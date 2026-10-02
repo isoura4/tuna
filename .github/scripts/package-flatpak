@@ -48,18 +48,14 @@ package() {
     return 2
   }
 
-  local -i debug=0
   local -i verbosity=1
-  local -r _version='2.0.0'
+  local -r _version='1.0.0'
   local -r -a _valid_targets=(
     ubuntu-x86_64
   )
   local target
   local config='RelWithDebInfo'
   local -r -a _valid_configs=(Debug RelWithDebInfo Release MinSizeRel)
-  local -i codesign=0
-  local -i notarize=0
-  local -i package=0
   local -i skip_deps=0
 
   local -r _usage="
@@ -120,9 +116,6 @@ ${_usage_host:-}"
         config=${2}
         shift 2
         ;;
-      -s|--codesign) typeset -g codesign=1; shift ;;
-      -n|--notarize) typeset -g notarize=1; typeset -g codesign=1; shift ;;
-      -p|--package) typeset -g package=1; shift ;;
       --skip-deps) typeset -g skip_deps=1; shift ;;
       -q|--quiet) (( verbosity -= 1 )) || true; shift ;;
       -v|--verbose) (( verbosity += 1 )); shift ;;
@@ -142,38 +135,76 @@ ${_usage_host:-}"
     check_${host_os}
   }
 
+  if ! command -v flatpak >/dev/null; then
+    log_error 'No flatpak command found. Please install flatpak.'
+    return 2
+  fi
+
   local product_name
   local product_version
   read -r product_name product_version <<< \
     "$(jq -r '. | {name, version} | join(" ")' ${buildspec_file})"
 
-  local -a cmake_args=()
-  if (( _loglevel > 1 )) cmake_args+=(--verbose)
-
-  log_group "Creating source tarball for ${product_name}..."
-  pushd ${project_root}
-  cmake --build build_${target##*-} --config ${config} -t package_source ${cmake_args}
-  popd
-
-  if (( package )) {
-    log_group "Packaging ${product_name}..."
-    pushd ${project_root}
-    cmake --build build_${target##*-} --config ${config} -t package ${cmake_args}
-    .github/scripts/package-flatpak \
-      --target ${target} \
-      --config ${config} \
-      --skip-deps
-    popd
-  } else {
-    log_group "Archiving ${product_name}..."
-    local output_name="${product_name}-${product_version}-${target##*-}-ubuntu-gnu"
-    local _tarflags='cJf'
-    if (( _loglevel > 1 || ${+CI} )) _tarflags="v${_tarflags}"
-
-    pushd ${project_root}/release/${config}
-    XZ_OPT=-T0 tar "-${_tarflags}" ${project_root}/release/${output_name}.tar.xz (lib|share)
-    popd
+  local install_root="${project_root}/release/${config}"
+  if [[ ! -d "${install_root}" ]] {
+    log_error "No release artifact found at '${install_root}'. Run the build script first."
+    return 2
   }
+
+  local arch="${target##*-}"
+  local flatpak_arch
+  case "${arch}" {
+    x86_64) flatpak_arch='x86_64' ;;
+    aarch64|arm64) flatpak_arch='aarch64' ;;
+    *)
+      log_error "Unsupported target architecture for Flatpak packaging: ${arch}"
+      return 2
+      ;;
+  }
+
+  local flatpak_id
+  flatpak_id="$(jq -r '.platformConfig.macos.bundleId // .name' ${buildspec_file}).plugin"
+
+  local runtime="${FLATPAK_RUNTIME:-org.freedesktop.Platform}"
+  local sdk="${FLATPAK_SDK:-org.freedesktop.Sdk}"
+  local branch="${FLATPAK_BRANCH:-24.08}"
+
+  local temp_root="${project_root}/release/.flatpak/${product_name}-${product_version}-${flatpak_arch}"
+  local build_root="${temp_root}/build"
+  local repo_root="${temp_root}/repo"
+  local bundle_path="${project_root}/release/${product_name}-${product_version}-${flatpak_arch}.flatpak"
+
+  rm -rf "${temp_root}"
+  mkdir -p "${temp_root}"
+  rm -f "${bundle_path}"
+
+  if ! flatpak --user info "${runtime}//${branch}" --arch="${flatpak_arch}" >/dev/null 2>&1 \
+    || ! flatpak --user info "${sdk}//${branch}" --arch="${flatpak_arch}" >/dev/null 2>&1; then
+    log_group "Installing Flatpak runtime dependencies (${branch})..."
+    flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    flatpak --user install --noninteractive flathub \
+      "${runtime}//${branch}" \
+      "${sdk}//${branch}"
+  fi
+
+  log_group "Creating Flatpak bundle for ${product_name}..."
+  flatpak build-init \
+    --arch="${flatpak_arch}" \
+    --command=true \
+    "${build_root}" \
+    "${flatpak_id}" \
+    "${runtime}" \
+    "${sdk}" \
+    "${branch}"
+
+  mkdir -p "${build_root}/files"
+  if [[ -d "${install_root}/lib" ]] cp -a "${install_root}/lib" "${build_root}/files/"
+  if [[ -d "${install_root}/lib64" ]] cp -a "${install_root}/lib64" "${build_root}/files/"
+  if [[ -d "${install_root}/share" ]] cp -a "${install_root}/share" "${build_root}/files/"
+
+  flatpak build-export --arch="${flatpak_arch}" "${repo_root}" "${build_root}" "${branch}"
+  flatpak build-bundle --arch="${flatpak_arch}" "${repo_root}" "${bundle_path}" "${flatpak_id}" "${branch}"
+  rm -rf "${temp_root}"
   log_group
 }
 
