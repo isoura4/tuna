@@ -164,6 +164,10 @@ ${_usage_host:-}"
 
   local flatpak_id
   flatpak_id="$(jq -r '.platformConfig.macos.bundleId // .name' ${buildspec_file}).plugin"
+  if [[ ! "${flatpak_id}" =~ '^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)+$' ]] {
+    log_error "Invalid Flatpak application ID: ${flatpak_id}"
+    return 2
+  }
 
   local runtime="${FLATPAK_RUNTIME:-org.freedesktop.Platform}"
   local sdk="${FLATPAK_SDK:-org.freedesktop.Sdk}"
@@ -173,6 +177,7 @@ ${_usage_host:-}"
   local build_root="${temp_root}/build"
   local repo_root="${temp_root}/repo"
   local bundle_path="${project_root}/release/${product_name}-${product_version}-${flatpak_arch}.flatpak"
+  local launcher_command="${product_name}"
 
   rm -rf "${temp_root}"
   mkdir -p "${temp_root}"
@@ -190,7 +195,6 @@ ${_usage_host:-}"
   log_group "Creating Flatpak bundle for ${product_name}..."
   flatpak build-init \
     --arch="${flatpak_arch}" \
-    --command=true \
     "${build_root}" \
     "${flatpak_id}" \
     "${runtime}" \
@@ -198,12 +202,32 @@ ${_usage_host:-}"
     "${branch}"
 
   mkdir -p "${build_root}/files"
+  mkdir -p "${build_root}/files/bin" "${build_root}/files/share/applications"
+  cat << EOF > "${build_root}/files/bin/${launcher_command}"
+#!/usr/bin/env sh
+echo "${product_name} is an OBS plugin package. Launch OBS Studio in Flatpak to use it." >&2
+exec /usr/bin/true
+EOF
+  chmod +x "${build_root}/files/bin/${launcher_command}"
+  cat << EOF > "${build_root}/files/share/applications/${flatpak_id}.desktop"
+[Desktop Entry]
+Type=Application
+Name=${product_name}
+Exec=${launcher_command}
+Terminal=true
+Categories=Utility;
+EOF
   if [[ -d "${install_root}/lib" ]] cp -a "${install_root}/lib" "${build_root}/files/"
   if [[ -d "${install_root}/lib64" ]] cp -a "${install_root}/lib64" "${build_root}/files/"
   if [[ -d "${install_root}/share" ]] cp -a "${install_root}/share" "${build_root}/files/"
 
+  flatpak build-finish --command="${launcher_command}" "${build_root}"
   flatpak build-export --arch="${flatpak_arch}" "${repo_root}" "${build_root}" "${branch}"
   flatpak build-bundle --arch="${flatpak_arch}" "${repo_root}" "${bundle_path}" "${flatpak_id}" "${branch}"
+  if [[ ! -s "${bundle_path}" ]] {
+    log_error "Flatpak bundle was not generated at '${bundle_path}'."
+    return 2
+  }
   rm -rf "${temp_root}"
   log_group
 }
