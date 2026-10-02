@@ -11,7 +11,7 @@ Currently supports
 - [last.fm](https://last.fm) scrobbling
 - OBS VLC source
 - [YouTube Music](https://github.com/th-ch/youtube-music)
-- Most music players through [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) and [Windows Media Control](https://learn.microsoft.com/en-us/uwp/api/windows.media.control?view=winrt-19041)
+- Most music players through [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) and [Windows Media Control](https://learn.microsoft.com/en-us/uwp/api/windows.media.control?view=winrt-26100)
 - Through [tampermonkey script](https://github.com/univrsal/tuna/raw/master/deps/tuna_browser.user.js):
     - Soundcloud 
     - Spotify Web Player
@@ -40,3 +40,8 @@ Lyrics for the lyrics html overlay are served via [lrclib](https://github.com/tr
 - MPD connection via [libmpdclient](https://musicpd.org/libs/libmpdclient/)
 - Webserver implemented through [cpp-httplib](https://github.com/yhirose/cpp-httplib)
 - [cURL](https://curl.se) for fetching remote content and API interactions
+
+### Modifications
+
+- Mise à jour de la documentation du README pour décrire les modifications apportées à ce dépôt.
+- Cette mise à jour a été réalisée avec l’aide d’une intelligence artificielle (IA), puis relue et validée par le mainteneur du dépôt.
