@@ -41,7 +41,7 @@ Lyrics for the lyrics html overlay are served via [lrclib](https://github.com/tr
 - Webserver implemented through [cpp-httplib](https://github.com/yhirose/cpp-httplib)
 - [cURL](https://curl.se) for fetching remote content and API interactions
 
-### Modifications
+### Modifications apportées
 
-- Mise à jour de la documentation du README pour décrire les modifications apportées à ce dépôt.
-- Cette mise à jour a été réalisée avec l’aide d’une intelligence artificielle (IA), puis relue et validée par le mainteneur du dépôt.
+- Ajout de la génération des paquets **RPM** et **Flatpak** dans les workflows GitHub Actions afin de faciliter la distribution du plugin sur Linux.
+- Ces modifications ont été réalisées avec l’aide d’une intelligence artificielle (IA), puis relues et validées par le mainteneur du dépôt.
