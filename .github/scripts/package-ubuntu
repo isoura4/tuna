@@ -164,6 +164,64 @@ ${_usage_host:-}"
       --config ${config} \
       --skip-deps
     popd
+
+    local arch="${target##*-}"
+    local deb_arch
+    local rpm_arch
+    case "${arch}" {
+      x86_64)
+        deb_arch='amd64'
+        rpm_arch='x86_64'
+        ;;
+      aarch64|arm64)
+        deb_arch='arm64'
+        rpm_arch='aarch64'
+        ;;
+      *)
+        log_error "Unsupported packaging architecture: ${arch}"
+        return 2
+        ;;
+    }
+
+    local -a deb_packages=(${project_root}/release/*.deb(N))
+    local -a ddeb_packages=(${project_root}/release/*.ddeb(N))
+    local -a rpm_packages=(${project_root}/release/*.rpm(N))
+    local -a flatpak_packages=(${project_root}/release/*.flatpak(N))
+
+    if (( ! ${#deb_packages} )) {
+      log_error 'Expected at least one .deb package in release/.'
+      return 2
+    }
+    if (( ! ${#ddeb_packages} )) {
+      log_error 'Expected at least one .ddeb package in release/.'
+      return 2
+    }
+    if (( ! ${#rpm_packages} )) {
+      log_error 'Expected at least one .rpm package in release/.'
+      return 2
+    }
+    if (( ! ${#flatpak_packages} )) {
+      log_error 'Expected at least one .flatpak bundle in release/.'
+      return 2
+    }
+
+    local package_arch
+    local package_file
+    for package_file (${deb_packages} ${ddeb_packages}) {
+      package_arch="$(dpkg-deb --field "${package_file}" Architecture)"
+      if [[ "${package_arch}" != "${deb_arch}" ]] {
+        log_error "Debian package architecture mismatch for '${package_file:t}': expected '${deb_arch}', got '${package_arch}'."
+        return 2
+      }
+    }
+
+    for package_file (${rpm_packages}) {
+      package_arch="$(rpm -qp --queryformat '%{ARCH}' "${package_file}")"
+      if [[ "${package_arch}" != "${rpm_arch}" ]] {
+        log_error "RPM package architecture mismatch for '${package_file:t}': expected '${rpm_arch}', got '${package_arch}'."
+        return 2
+      }
+    }
   } else {
     log_group "Archiving ${product_name}..."
     local output_name="${product_name}-${product_version}-${target##*-}-ubuntu-gnu"

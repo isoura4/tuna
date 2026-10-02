@@ -78,14 +78,43 @@ jobs:
             'sources;tar.xz'
           )
 
+          moved_files=0
           for variant_data in "${variants[@]}"; do
             IFS=';' read -r variant suffix <<< "${variant_data}"
+            artifact_dirs=( *-"${variant}"-"${commit_hash}" )
+            if (( ${#artifact_dirs[@]} == 0 )); then
+              echo "::error::No artifact directory found for variant '${variant}'."
+              exit 1
+            fi
 
-            candidates=(*-${variant}-${commit_hash}/@(*|*-dbgsym).@(${suffix}))
-
-            for candidate in "${candidates[@]}"; do
-              mv "${candidate}" "${root_dir}"
+            IFS='|' read -r -a suffixes <<< "${suffix}"
+            for artifact_dir in "${artifact_dirs[@]}"; do
+              for ext in "${suffixes[@]}"; do
+                for candidate in "${artifact_dir}"/*.${ext}; do
+                  destination="${root_dir}/$(basename "${candidate}")"
+                  if [[ -e "${destination}" ]]; then
+                    echo "::error::Artifact collision detected for '${destination}'."
+                    exit 1
+                  fi
+                  mv "${candidate}" "${root_dir}/"
+                  (( moved_files += 1 ))
+                done
+              done
             done
+          done
+
+          if (( moved_files == 0 )); then
+            echo "::error::No artifacts were moved from downloaded artifact directories."
+            exit 1
+          fi
+
+          required_extensions=(exe zip pkg deb ddeb rpm flatpak tar.xz)
+          for ext in "${required_extensions[@]}"; do
+            matches=( "${root_dir}"/*.${ext} )
+            if (( ${#matches[@]} == 0 )); then
+              echo "::error::Expected at least one '.${ext}' artifact after renaming."
+              exit 1
+            fi
           done
 
       - name: Generate Checksums 🪪
